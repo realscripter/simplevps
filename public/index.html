@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DrafterPlus</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+
+    <div id="toast-container"></div>
+
+    <!-- LOGIN -->
+    <div id="login-page">
+        <div class="login-card">
+            <div class="logo"><i class="fas fa-bolt"></i></div>
+            <h1>DrafterPlus</h1>
+            <p>Enter your one-time password</p>
+            <form id="login-form">
+                <div class="form-group">
+                    <input type="password" id="login-pass" placeholder="Password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%">Sign In</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- APP -->
+    <div id="app">
+        <header class="app-header">
+            <div class="app-logo"><i class="fas fa-bolt"></i> DrafterPlus</div>
+            <nav class="app-nav">
+                <a class="active" onclick="showPage('servers')">Servers</a>
+                <a onclick="showPage('settings')">Settings</a>
+                <a onclick="logout()">Logout</a>
+            </nav>
+        </header>
+
+        <main class="app-main">
+            <!-- SERVERS -->
+            <div id="page-servers">
+                <div class="section-header">
+                    <h2>Servers</h2>
+                    <button class="btn btn-primary" onclick="openCreateModal()"><i class="fas fa-plus"></i>
+                        Deploy</button>
+                </div>
+                <div id="server-list" class="server-grid"></div>
+            </div>
+
+            <!-- DETAIL -->
+            <div id="page-detail" class="hidden">
+                <a href="#" class="detail-back" onclick="showPage('servers')"><i class="fas fa-arrow-left"></i> Back to
+                    servers</a>
+
+                <div class="detail-header">
+                    <div>
+                        <h1 id="detail-name"></h1>
+                        <div class="meta" id="detail-meta"></div>
+                    </div>
+                    <div class="detail-actions" id="detail-actions">
+                        <button class="btn btn-ghost btn-sm" onclick="serverAction('update')"><i
+                                class="fas fa-download"></i> Pull</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-start" onclick="serverAction('start')"
+                            style="display:none;"><i class="fas fa-play"></i> Start</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-restart" onclick="serverAction('restart')"><i
+                                class="fas fa-redo"></i> Restart</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-stop" onclick="serverAction('stop')"><i
+                                class="fas fa-stop"></i> Stop</button>
+                        <button class="btn btn-danger btn-sm" onclick="serverAction('delete')"><i
+                                class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <div class="tab active" onclick="showTab('console')">Console</div>
+                    <div class="tab" onclick="showTab('files')">Files</div>
+                    <div class="tab" onclick="showTab('events')">Events</div>
+                    <div class="tab" onclick="showTab('config')">Config</div>
+                </div>
+
+                <div id="tab-console">
+                    <div class="console" id="console-output">Waiting for logs...</div>
+                    <div style="margin-top:0.75rem;display:flex;gap:0.5rem;">
+                        <button class="btn btn-ghost btn-sm" onclick="refreshLogs()"><i class="fas fa-sync"></i>
+                            Refresh</button>
+                    </div>
+                </div>
+
+                <div id="tab-files" class="hidden">
+                    <div style="margin-bottom:0.75rem;display:flex;justify-content:space-between;align-items:center;">
+                        <div id="file-breadcrumb" style="font-size:0.85rem;color:var(--text-muted);"></div>
+                        <button class="btn btn-ghost btn-sm" onclick="createNewFile()"><i class="fas fa-plus"></i> New
+                            File</button>
+                    </div>
+                    <div class="card" id="file-content"></div>
+                </div>
+
+                <div id="tab-events" class="hidden">
+                    <div class="card">
+                        <div class="event-log" id="events-list">
+                            <div class="event-item">
+                                <span class="event-time">Loading...</span>
+                                <span class="event-msg"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-config" class="hidden">
+                    <div class="card" style="max-width:500px;">
+                        <form id="server-config-form">
+                            <div class="form-group">
+                                <label>Port</label>
+                                <input type="number" id="cfg-port" placeholder="3000">
+                            </div>
+                            <div class="form-group">
+                                <label>Memory Limit (MB)</label>
+                                <input type="number" id="cfg-ram" placeholder="512">
+                            </div>
+                            <div class="form-group">
+                                <label>Domain</label>
+                                <input type="text" id="cfg-domain" placeholder="app.example.com">
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="cfg-autorefresh" style="width:auto;margin-right:0.5rem;">
+                                    Auto-refresh console
+                                </label>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Save Configuration</button>
+                        </form>
+
+                        <div id="dns-box"
+                            style="margin-top:1.5rem;padding:1rem;background:var(--bg-0);border-radius:8px;display:none;">
+                            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem;">DNS Record</div>
+                            <pre style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem;">Type: A
+Name: <span id="dns-name">@</span>
+Value: <span id="dns-ip">loading...</span></pre>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="verifyDomain()"><i
+                                    class="fas fa-check-circle"></i> Verify</button>
+                            <span id="domain-status" style="margin-left:0.5rem;font-size:0.85rem;"></span>
+                        </div>
+
+                        <div style="margin-top:1.5rem;padding:1rem;background:var(--bg-0);border-radius:8px;">
+                            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem;">SSL Certificate</div>
+                            <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:0.75rem;">Enable HTTPS for
+                                your domain with a free Let's Encrypt certificate.</p>
+                            <button type="button" class="btn btn-primary btn-sm" onclick="generateSSL()"><i
+                                    class="fas fa-lock"></i> Generate SSL</button>
+                            <span id="ssl-status" style="margin-left:0.5rem;font-size:0.85rem;"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div id="page-settings" class="hidden">
+                <div class="section-header">
+                    <h2>Settings</h2>
+                </div>
+                <div class="card" style="max-width:500px;">
+                    <form id="settings-form">
+                        <div class="form-group">
+                            <label>GitHub Personal Access Token</label>
+                            <input type="password" id="settings-token" placeholder="ghp_...">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save Token</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- CREATE MODAL -->
+    <div id="create-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Deploy New Server</h3>
+                <button class="btn btn-ghost btn-sm" onclick="closeCreateModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <form id="create-form">
+                <div class="form-group">
+                    <label>Server Name</label>
+                    <input type="text" id="create-name" placeholder="my-app" required>
+                </div>
+                <div class="form-group">
+                    <label>Repository</label>
+                    <div style="display:flex;gap:0.5rem;">
+                        <input type="url" id="create-repo" placeholder="https://github.com/user/repo" style="flex:1;">
+                        <button type="button" class="btn btn-ghost" onclick="loadGitHubRepos()"><i
+                                class="fas fa-list"></i></button>
+                    </div>
+                </div>
+                <select id="create-repo-select" class="hidden" onchange="selectRepo(this.value)"
+                    style="margin-bottom:1rem;"></select>
+                <div class="form-group">
+                    <label>Runtime</label>
+                    <select id="create-runtime">
+                        <option value="node">Node.js</option>
+                        <option value="python">Python</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Entry Point (optional)</label>
+                    <input type="text" id="create-entry" placeholder="Auto-detect">
+                </div>
+                <div class="form-group">
+                    <label>Memory Limit (MB)</label>
+                    <input type="number" id="create-ram" placeholder="512" value="512">
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:0.5rem;margin-top:1rem;">
+                    <button type="button" class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-rocket"></i> Deploy</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- PULL MODAL -->
+    <div id="pull-modal" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Pull Updates</h3>
+                <button class="btn btn-ghost btn-sm" onclick="closePullModal()"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="pull-content">
+                <div id="pull-loading" style="text-align:center;padding:2rem;">
+                    <i class="fas fa-spinner fa-spin" style="font-size:2rem;color:var(--accent);"></i>
+                    <p style="margin-top:1rem;color:var(--text-muted);">Checking for updates...</p>
+                </div>
+                <div id="pull-info" style="display:none;">
+                    <div id="pull-status" style="margin-bottom:1rem;"></div>
+                    <div id="pull-commits" style="max-height:200px;overflow-y:auto;margin-bottom:1rem;"></div>
+                    <div style="display:flex;gap:0.5rem;justify-content:flex-end;">
+                        <button class="btn btn-ghost" onclick="closePullModal()">Cancel</button>
+                        <button class="btn btn-primary" id="pull-confirm-btn" onclick="confirmPull()"><i
+                                class="fas fa-download"></i> Pull Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
