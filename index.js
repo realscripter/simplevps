@@ -305,12 +305,14 @@ app.post('/api/servers', requireAuth, async (req, res) => {
             }
         }
 
-        // 4. Start with PM2
+        // 4. Get port and free it if needed
+        const port = serverStore.getNextPort();
+        console.log(`Freeing port ${port}...`);
+        await pm2Manager.killPort(port);
+
+        // 5. Start with PM2
         console.log(`Starting ${id}...`);
         await pm2Manager.startProcess(id, pm2Config);
-
-        // 5. Assign port and save to store
-        const port = serverStore.getNextPort();
         serverStore.addServer({
             id,
             name,

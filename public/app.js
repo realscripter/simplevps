@@ -159,8 +159,12 @@ function startAutoRefresh() {
 }
 
 function showTab(tab) {
-    document.querySelectorAll('.tabs .tab').forEach(el => el.classList.remove('active'));
-    if (event?.currentTarget) event.currentTarget.classList.add('active');
+    document.querySelectorAll('.tabs .tab').forEach(el => {
+        el.classList.remove('active');
+        if (el.textContent.toLowerCase().includes(tab)) {
+            el.classList.add('active');
+        }
+    });
 
     ['console', 'files', 'events', 'config'].forEach(t => {
         const el = document.getElementById(`tab-${t}`);
