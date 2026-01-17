@@ -418,7 +418,7 @@ app.post('/api/servers/:id/update', requireAuth, async (req, res) => {
     }
 });
 
-// Generate SSL Certificate using Let's Encrypt
+// Generate SSL Certificate using Certbot (Let's Encrypt)
 app.post('/api/generate-ssl', requireAuth, async (req, res) => {
     const { domain, email } = req.body;
 
@@ -426,70 +426,53 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
         return res.status(400).json({ error: 'Domain required' });
     }
 
+    // Only works on Linux
+    if (process.platform !== 'linux') {
+        return res.json({
+            success: false,
+            error: 'SSL generation only works on Linux. On Windows, use Cloudflare for free SSL.'
+        });
+    }
+
     try {
         // Open ports 80 and 443 for SSL
         await firewall.openSSLPorts();
 
-        const acme = require('acme-client');
-        const forge = require('node-forge');
+        const { exec } = require('child_process');
 
-        // Generate account key
-        const accountKey = await acme.forge.createPrivateKey();
-
-        // Create ACME client (Let's Encrypt)
-        const client = new acme.Client({
-            directoryUrl: acme.directory.letsencrypt.production,
-            accountKey: accountKey
+        // First, check if certbot is installed
+        const checkCertbot = () => new Promise((resolve) => {
+            exec('which certbot', (err) => resolve(!err));
         });
 
-        // Create account
-        await client.createAccount({
-            termsOfServiceAgreed: true,
-            contact: [`mailto:${email || 'admin@' + domain}`]
-        });
+        const hasCertbot = await checkCertbot();
 
-        // Create order for domain
-        const order = await client.createOrder({
-            identifiers: [{ type: 'dns', value: domain }]
-        });
-
-        // Get authorizations
-        const authorizations = await client.getAuthorizations(order);
-
-        for (const auth of authorizations) {
-            const challenge = auth.challenges.find(c => c.type === 'http-01');
-            if (!challenge) continue;
-
-            const keyAuth = await client.getChallengeKeyAuthorization(challenge);
-
-            // Save challenge file
-            const challengeDir = path.join(__dirname, 'data/acme-challenge');
-            if (!fs.existsSync(challengeDir)) {
-                fs.mkdirSync(challengeDir, { recursive: true });
-            }
-            fs.writeFileSync(path.join(challengeDir, challenge.token), keyAuth);
-
-            // Verify challenge
-            await client.verifyChallenge(auth, challenge);
-            await client.completeChallenge(challenge);
-            await client.waitForValidStatus(challenge);
+        if (!hasCertbot) {
+            // Install certbot
+            console.log('[SSL] Installing Certbot...');
+            await new Promise((resolve, reject) => {
+                exec('apt update && apt install -y certbot', (err, stdout, stderr) => {
+                    if (err) reject(new Error('Failed to install Certbot: ' + stderr));
+                    else resolve(stdout);
+                });
+            });
         }
 
-        // Finalize order and get certificate
-        const [key, csr] = await acme.forge.createCsr({
-            commonName: domain
+        // Run certbot standalone
+        console.log(`[SSL] Generating certificate for ${domain}...`);
+        const certbotCmd = `certbot certonly --standalone --non-interactive --agree-tos --email ${email || 'admin@' + domain} -d ${domain}`;
+
+        await new Promise((resolve, reject) => {
+            exec(certbotCmd, (err, stdout, stderr) => {
+                console.log('[SSL]', stdout);
+                if (err) {
+                    console.error('[SSL] Error:', stderr);
+                    reject(new Error(stderr || 'Certbot failed'));
+                } else {
+                    resolve(stdout);
+                }
+            });
         });
-
-        await client.finalizeOrder(order, csr);
-        const cert = await client.getCertificate(order);
-
-        // Save certificates
-        const certsDir = path.join(__dirname, 'data/certs');
-        if (!fs.existsSync(certsDir)) {
-            fs.mkdirSync(certsDir, { recursive: true });
-        }
-        fs.writeFileSync(path.join(certsDir, 'privkey.pem'), key);
-        fs.writeFileSync(path.join(certsDir, 'fullchain.pem'), cert);
 
         // Mark domain as having SSL
         const server = serverStore.getServers().find(s => s.domain === domain);
@@ -499,13 +482,13 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
 
         res.json({
             success: true,
-            message: 'SSL certificate generated! Restart the server to enable HTTPS.'
+            message: `SSL certificate generated for ${domain}! Certificates are in /etc/letsencrypt/live/${domain}/`
         });
     } catch (err) {
         console.error('[SSL] Error:', err);
         res.json({
             success: false,
-            error: err.message || 'Failed to generate certificate. Make sure the domain points to this server and port 80 is accessible.'
+            error: err.message || 'Failed to generate certificate. Make sure: 1) Domain points to this server 2) Port 80 is open 3) No other web server is running on port 80'
         });
     }
 });
