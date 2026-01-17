@@ -702,8 +702,10 @@ app.put('/api/servers/:id/files', requireAuth, (req, res) => {
     }
 });
 
-server.listen(PORT, () => {
+// Bind to 0.0.0.0 so it's accessible externally
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Dashboard: http://localhost:${PORT} or http://YOUR_IP:${PORT}`);
 
     // Start domain proxy on port 80 (requires admin/root on Windows/Linux)
     try {
