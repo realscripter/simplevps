@@ -18,6 +18,7 @@ const serverStore = require('./lib/server-store');
 const gitManager = require('./lib/git-manager');
 const pm2Manager = require('./lib/pm2-manager');
 const domainProxy = require('./lib/domain-proxy');
+const firewall = require('./lib/firewall');
 
 const app = express();
 const server = http.createServer(app);
@@ -324,6 +325,9 @@ app.post('/api/servers', requireAuth, async (req, res) => {
             domain: ''
         });
 
+        // Open port in firewall
+        await firewall.openPort(port);
+
         res.json({ success: true, port });
 
     } catch (err) {
@@ -335,12 +339,22 @@ app.post('/api/servers', requireAuth, async (req, res) => {
 });
 
 // Update server settings (port, domain, ram)
-app.patch('/api/servers/:id', requireAuth, (req, res) => {
+app.patch('/api/servers/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
     const { port, domain, ram } = req.body;
 
+    // Get old server data for port comparison
+    const oldServer = serverStore.getServer(id);
+
     const updated = serverStore.updateServer(id, { port, domain, ram });
     if (updated) {
+        // Handle port change - close old, open new
+        if (oldServer && port && oldServer.port !== port) {
+            console.log(`[Firewall] Port changed from ${oldServer.port} to ${port}`);
+            await firewall.closePort(oldServer.port);
+            await firewall.openPort(port);
+        }
+
         res.json({ success: true, server: updated });
     } else {
         res.status(404).json({ error: 'Server not found' });
@@ -413,6 +427,9 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
     }
 
     try {
+        // Open ports 80 and 443 for SSL
+        await firewall.openSSLPorts();
+
         const acme = require('acme-client');
         const forge = require('node-forge');
 
