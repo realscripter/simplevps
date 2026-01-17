@@ -458,9 +458,16 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
             });
         }
 
-        // Run certbot standalone
+        // Run certbot using webroot
         console.log(`[SSL] Generating certificate for ${domain}...`);
-        const certbotCmd = `certbot certonly --standalone --non-interactive --agree-tos --email ${email || 'admin@' + domain} -d ${domain}`;
+
+        // Ensure webroot exists
+        const webrootPath = path.join(__dirname, 'data/webroot');
+        if (!fs.existsSync(webrootPath)) {
+            fs.mkdirSync(webrootPath, { recursive: true });
+        }
+
+        const certbotCmd = `certbot certonly --webroot -w ${webrootPath} --non-interactive --agree-tos --email ${email || 'admin@' + domain} -d ${domain}`;
 
         await new Promise((resolve, reject) => {
             exec(certbotCmd, (err, stdout, stderr) => {
