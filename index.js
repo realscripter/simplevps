@@ -458,6 +458,15 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
             });
         }
 
+        // Kill any existing certbot processes
+        try {
+            await new Promise((resolve) => {
+                exec('killall certbot', () => resolve());
+            });
+            // Small delay to ensure cleanup
+            await new Promise(r => setTimeout(r, 1000));
+        } catch (e) { /* ignore */ }
+
         // Run certbot using webroot
         console.log(`[SSL] Generating certificate for ${domain}...`);
 
