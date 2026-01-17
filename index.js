@@ -707,10 +707,14 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Dashboard: http://localhost:${PORT} or http://YOUR_IP:${PORT}`);
 
-    // Start domain proxy on port 80 (requires admin/root on Windows/Linux)
-    try {
-        domainProxy.startProxy(80);
-    } catch (err) {
-        console.log('[Proxy] Could not start on port 80 (needs admin). Domain routing disabled.');
-    }
+    // Start domain proxy on port 80 (optional - requires admin/root)
+    // Skip if port is already in use (e.g., nginx)
+    setTimeout(() => {
+        try {
+            domainProxy.startProxy(80);
+        } catch (err) {
+            console.log('[Proxy] Could not start on port 80:', err.message);
+            console.log('[Proxy] Domain routing disabled. Use nginx as reverse proxy instead.');
+        }
+    }, 1000);
 });
