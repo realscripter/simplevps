@@ -8,11 +8,7 @@ const path = require('path');
 const fs = require('fs');
 
 const configManager = require('./lib/config-manager');
-const simpleGit = require('simple-git'); // Need this here or in git-manager for listing remote? 
-// Actually, listing remote repos usually requires GitHub API (Octokit) or using `git ls-remote` but that implies we know the url.
-// To list "all repos for a user", we need to fetch from GitHub API.
-// Since we don't want to add big dependencies if possible, I'll use native fetch or simple https request. Node 18+ has fetch.
-// The user has Node 22.14.0 (seen in logs). So global fetch is available.
+const simpleGit = require('simple-git');
 
 const serverStore = require('./lib/server-store');
 const gitManager = require('./lib/git-manager');
@@ -309,7 +305,7 @@ app.post('/api/servers', requireAuth, async (req, res) => {
         // 4. Get port and free it if needed
         const port = serverStore.getNextPort();
         console.log(`Freeing port ${port}...`);
-        await pm2Manager.killPort(port);
+        try { await pm2Manager.killPort(port); } catch (e) { }
 
         // 5. Start with PM2
         console.log(`Starting ${id}...`);
@@ -458,37 +454,47 @@ app.post('/api/generate-ssl', requireAuth, async (req, res) => {
             });
         }
 
-        // Kill any existing certbot processes
+        // 1. Stop internal domain proxy to free port 80
+        await domainProxy.stopProxy();
+
+        // 2. Kill any external process using port 80 (e.g. nginx)
+        try {
+            await pm2Manager.killPort(80);
+        } catch (e) {
+            console.log('[SSL] Failed to kill port 80 process:', e.message);
+        }
+
+        // 3. Kill any existing certbot processes
         try {
             await new Promise((resolve) => {
                 exec('killall certbot', () => resolve());
             });
-            // Small delay to ensure cleanup
             await new Promise(r => setTimeout(r, 1000));
         } catch (e) { /* ignore */ }
 
-        // Run certbot using webroot
+        // 4. Run certbot standalone
         console.log(`[SSL] Generating certificate for ${domain}...`);
+        const certbotCmd = `certbot certonly --standalone --non-interactive --agree-tos --email ${email || 'admin@' + domain} -d ${domain}`;
 
-        // Ensure webroot exists
-        const webrootPath = path.join(__dirname, 'data/webroot');
-        if (!fs.existsSync(webrootPath)) {
-            fs.mkdirSync(webrootPath, { recursive: true });
-        }
-
-        const certbotCmd = `certbot certonly --webroot -w ${webrootPath} --non-interactive --agree-tos --email ${email || 'admin@' + domain} -d ${domain}`;
-
-        await new Promise((resolve, reject) => {
-            exec(certbotCmd, (err, stdout, stderr) => {
-                console.log('[SSL]', stdout);
-                if (err) {
-                    console.error('[SSL] Error:', stderr);
-                    reject(new Error(stderr || 'Certbot failed'));
-                } else {
-                    resolve(stdout);
-                }
+        try {
+            await new Promise((resolve, reject) => {
+                exec(certbotCmd, (err, stdout, stderr) => {
+                    console.log('[SSL]', stdout);
+                    if (err) {
+                        console.error('[SSL] Error:', stderr);
+                        reject(new Error(stderr || 'Certbot failed'));
+                    } else {
+                        resolve(stdout);
+                    }
+                });
             });
-        });
+        } finally {
+            // 5. Restart domain proxy regardless of success/failure
+            console.log('[SSL] Restarting domain proxy...');
+            setTimeout(() => {
+                domainProxy.startProxy(80);
+            }, 1000);
+        }
 
         // Mark domain as having SSL
         const server = serverStore.getServers().find(s => s.domain === domain);
